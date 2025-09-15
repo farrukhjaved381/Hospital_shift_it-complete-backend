@@ -6,11 +6,12 @@ import { ChangeDocumentStatusDto, DTOStatus as DocStatus } from './dto/change-do
 import { CreateVerificationDto } from './dto/create-verification.dto';
 import { ChangeVerificationStatusDto, DTOStatus as VerStatus } from './dto/change-verification-status.dto';
 import { Role } from '@prisma/client';
+import { AuditService } from '../common/audit/audit.service';
 import { S3Service } from './storage/s3.service';
 
 @Injectable()
 export class VerificationsService {
-  constructor(private readonly repo: VerificationsRepository, private readonly s3: S3Service) {}
+  constructor(private readonly repo: VerificationsRepository, private readonly s3: S3Service, private readonly audit: AuditService) {}
 
   private assertSelfOrAdmin(user: any, targetUserId: string) {
     if (user.role === Role.SUPER_ADMIN) return;
@@ -34,12 +35,14 @@ export class VerificationsService {
       status: 'PENDING',
       expiresAt,
     });
+    await this.audit.log(user.id || null, 'DOCUMENT_PRESIGNED_REQUESTED', { documentId: doc.id, userId: dto.userId, type: dto.type });
     return { presignedUrl, document: doc };
   }
 
   async confirmUpload(dto: ConfirmUploadDto, user: any) {
     const uploadedAt = dto.uploadedAt ? new Date(dto.uploadedAt) : new Date();
     const doc = await this.repo.updateDocument(dto.documentId, { uploadedAt });
+    await this.audit.log(user.id || null, 'DOCUMENT_CONFIRMED', { documentId: dto.documentId });
     return { document: doc };
   }
 
@@ -51,17 +54,21 @@ export class VerificationsService {
   async changeDocumentStatus(docId: string, body: ChangeDocumentStatusDto, user: any) {
     if (![Role.HOSPITAL_ADMIN, Role.SUPER_ADMIN].includes(user.role)) throw new ForbiddenException();
     if (body.status === DocStatus.PENDING) throw new BadRequestException('Cannot set PENDING');
-    return this.repo.updateDocument(docId, { status: body.status });
+    const updated = await this.repo.updateDocument(docId, { status: body.status });
+    await this.audit.log(user.id || null, 'DOCUMENT_STATUS_CHANGED', { documentId: docId, status: body.status });
+    return updated;
   }
 
   async requestVerification(dto: CreateVerificationDto, user: any) {
     this.assertSelfOrAdmin(user, dto.userId);
-    return this.repo.createVerification({
+    const ver = await this.repo.createVerification({
       userId: dto.userId,
       type: dto.type,
       status: 'PENDING',
       partnerMeta: dto.metadata || {},
     });
+    await this.audit.log(user.id || null, 'VERIFICATION_REQUESTED', { verificationId: ver.id, userId: dto.userId, type: dto.type });
+    return ver;
   }
 
   async changeVerificationStatus(id: string, body: ChangeVerificationStatusDto, user: any) {
@@ -69,7 +76,9 @@ export class VerificationsService {
     if (body.status === VerStatus.PENDING) throw new BadRequestException('Cannot set PENDING');
     const data: any = { status: body.status };
     if (body.cost != null) data.cost = body.cost;
-    return this.repo.updateVerification(id, data);
+    const updatedVer = await this.repo.updateVerification(id, data);
+    await this.audit.log(user.id || null, 'VERIFICATION_STATUS_CHANGED', { verificationId: id, status: body.status, cost: body.cost });
+    return updatedVer;
   }
 
   async stats(yearMonth: string) {

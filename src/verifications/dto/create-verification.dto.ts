@@ -1,15 +1,15 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
-import { DTOVerificationType } from './upload-presign.dto';
+import { VerificationType } from '@prisma/client';
 
 export class CreateVerificationDto {
   @ApiProperty({ description: 'Target user ID', example: 'cl_user_cuid' })
   @IsUUID()
   userId: string;
 
-  @ApiProperty({ enum: DTOVerificationType, example: DTOVerificationType.DRUG_TEST })
-  @IsEnum(DTOVerificationType)
-  type: DTOVerificationType;
+  @ApiProperty({ enum: VerificationType, example: VerificationType.DRUG_TEST })
+  @IsEnum(VerificationType)
+  type: VerificationType;
 
   @ApiPropertyOptional({ description: 'Organization ID that requested (schoolId/hospitalId)' })
   @IsOptional()
@@ -20,4 +20,3 @@ export class CreateVerificationDto {
   @IsOptional()
   metadata?: Record<string, any>;
 }
-

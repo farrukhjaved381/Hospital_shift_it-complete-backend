@@ -1,10 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsArray, IsDateString, IsEnum, IsOptional, IsString, IsUUID, ArrayNotEmpty, IsInt, Min } from 'class-validator';
-
-export enum DTOShiftType {
-  AM = 'AM',
-  PM = 'PM',
-}
+import { ShiftType } from '@prisma/client';
 
 export class CreateRotationRequestDto {
   @ApiProperty({ description: 'School organization ID', example: 'cl_org_school_123' })
@@ -37,9 +33,9 @@ export class CreateRotationRequestDto {
   @IsDateString()
   endDate: string;
 
-  @ApiProperty({ enum: DTOShiftType, example: DTOShiftType.AM })
-  @IsEnum(DTOShiftType)
-  shift: DTOShiftType;
+  @ApiProperty({ enum: ShiftType, example: ShiftType.AM })
+  @IsEnum(ShiftType)
+  shift: ShiftType;
 
   @ApiProperty({ description: 'Hours per shift', example: 8 })
   @IsInt()

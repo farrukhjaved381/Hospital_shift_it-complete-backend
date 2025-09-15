@@ -1,11 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsDateString, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
-
-export enum DTOVerificationType {
-  DOCUMENT = 'DOCUMENT',
-  DRUG_TEST = 'DRUG_TEST',
-  BACKGROUND_CHECK = 'BACKGROUND_CHECK',
-}
+import { VerificationType } from '@prisma/client';
 
 export class UploadPresignDto {
   @ApiProperty({ description: 'Target user ID for the document', example: 'cl_user_cuid' })
@@ -22,13 +17,12 @@ export class UploadPresignDto {
   @IsNotEmpty()
   contentType: string;
 
-  @ApiProperty({ enum: DTOVerificationType, example: DTOVerificationType.DOCUMENT })
-  @IsEnum(DTOVerificationType)
-  type: DTOVerificationType;
+  @ApiProperty({ enum: VerificationType, example: VerificationType.DOCUMENT })
+  @IsEnum(VerificationType)
+  type: VerificationType;
 
   @ApiPropertyOptional({ description: 'Optional expiry for the document' })
   @IsOptional()
   @IsDateString()
   expiresAt?: string;
 }
-

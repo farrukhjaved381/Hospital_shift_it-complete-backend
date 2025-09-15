@@ -63,6 +63,10 @@ model User {
   memberships   Membership[] // User can be part of multiple organizations (kept from previous schema)
   passwordResets PasswordReset[] @relation("UserPasswordResets") // Corrected: Added relation name
   emailVerifications EmailVerification[]
+  // Phase 2/3 back-relations
+  assignments   Assignment[]
+  documents     Document[]
+  verifications Verification[]
 }
 
 model Profile {
@@ -83,6 +87,12 @@ model Organization {
   createdAt DateTime @default(now())
   memberships  Membership[]
   usersWithAffiliation User[] @relation("UserAffiliation") // Explicitly named relation
+  // Scheduling back-relations
+  clinicalSites        ClinicalSite[]     @relation("OrgClinicalSites")
+  reqSchoolRequests    RotationRequest[]  @relation("ReqSchool")
+  reqHospitalRequests  RotationRequest[]  @relation("ReqHospital")
+  rotations            Rotation[]         @relation("OrgRotationHospital")
+  calendars            Calendar[]         @relation("OrgCalendars")
 }
 
 model Membership {
@@ -195,7 +205,7 @@ model ClinicalSite {
   createdAt  DateTime     @default(now())
   updatedAt  DateTime     @updatedAt
 
-  hospital   Organization @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  hospital   Organization @relation("OrgClinicalSites", fields: [hospitalId], references: [id], onDelete: Cascade)
   departments Department[]
   rotations   Rotation[]
   requests    RotationRequest[]
@@ -231,7 +241,8 @@ model RotationRequest {
   hospital Organization @relation("ReqHospital", fields: [hospitalId], references: [id])
   site     ClinicalSite? @relation(fields: [siteId], references: [id])
   department Department? @relation(fields: [departmentId], references: [id])
-  rotation Rotation?
+  rotation Rotation? @relation("ReqToRotation")
+  @@map("RotationRequest")
 
   @@index([schoolId])
   @@index([hospitalId])
@@ -242,7 +253,7 @@ model RotationRequest {
 
 model Rotation {
   id           String         @id @default(cuid())
-  requestId    String?
+  requestId    String?        @unique
   hospitalId   String
   siteId       String?
   departmentId String?
@@ -254,8 +265,8 @@ model Rotation {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  request   RotationRequest? @relation(fields: [requestId], references: [id])
-  hospital  Organization     @relation(fields: [hospitalId], references: [id])
+  request   RotationRequest? @relation("ReqToRotation", fields: [requestId], references: [id])
+  hospital  Organization     @relation("OrgRotationHospital", fields: [hospitalId], references: [id])
   site      ClinicalSite?    @relation(fields: [siteId], references: [id])
   department Department?     @relation(fields: [departmentId], references: [id])
   assignments Assignment[]
@@ -284,7 +295,7 @@ model Calendar {
   orgId  String
   events CalendarEvent[]
 
-  owner  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  owner  Organization @relation("OrgCalendars", fields: [orgId], references: [id], onDelete: Cascade)
 }
 
 model CalendarEvent {
@@ -343,7 +354,7 @@ model Verification {
   partnerMeta Json?
   createdAt   DateTime         @default(now())
   updatedAt   DateTime         @updatedAt
-  documentId  String?
+  documentId  String?          @unique
   document    Document?        @relation(fields: [documentId], references: [id])
   invoiceId   String?
   user        User             @relation(fields: [userId], references: [id])
