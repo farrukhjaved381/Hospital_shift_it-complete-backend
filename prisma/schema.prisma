@@ -157,3 +157,146 @@ model EmailVerification {
 
   @@index([userId])
 }
+
+// -------- Scheduling & Rotations (Phase 2) --------
+
+// Status enums for requests and rotations
+enum RequestStatus {
+  PENDING
+  APPROVED
+  DENIED
+  CANCELED
+}
+
+enum RotationStatus {
+  SCHEDULED
+  ACTIVE
+  COMPLETED
+  CANCELED
+}
+
+enum ShiftType {
+  AM
+  PM
+}
+
+enum CalendarEventType {
+  BLOCKED
+  ROTATION
+  OTHER
+}
+
+model ClinicalSite {
+  id         String       @id @default(cuid())
+  hospitalId String
+  name       String
+  address    String?
+  capacity   Int?
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  hospital   Organization @relation(fields: [hospitalId], references: [id], onDelete: Cascade)
+  departments Department[]
+  rotations   Rotation[]
+  requests    RotationRequest[]
+}
+
+model Department {
+  id      String       @id @default(cuid())
+  siteId  String
+  name    String
+
+  site    ClinicalSite @relation(fields: [siteId], references: [id], onDelete: Cascade)
+  rotations Rotation[]
+  requests  RotationRequest[]
+}
+
+model RotationRequest {
+  id            String        @id @default(cuid())
+  schoolId      String
+  hospitalId    String
+  siteId        String?
+  departmentId  String?
+  specialty     String
+  startDate     DateTime
+  endDate       DateTime
+  shift         ShiftType
+  hoursPerShift Int
+  studentRoster String[]
+  status        RequestStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  school   Organization @relation("ReqSchool", fields: [schoolId], references: [id])
+  hospital Organization @relation("ReqHospital", fields: [hospitalId], references: [id])
+  site     ClinicalSite? @relation(fields: [siteId], references: [id])
+  department Department? @relation(fields: [departmentId], references: [id])
+  rotation Rotation?
+
+  @@index([schoolId])
+  @@index([hospitalId])
+  @@index([siteId])
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model Rotation {
+  id           String         @id @default(cuid())
+  requestId    String?
+  hospitalId   String
+  siteId       String?
+  departmentId String?
+  specialty    String
+  startDate    DateTime
+  endDate      DateTime
+  capacity     Int
+  status       RotationStatus @default(SCHEDULED)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  request   RotationRequest? @relation(fields: [requestId], references: [id])
+  hospital  Organization     @relation(fields: [hospitalId], references: [id])
+  site      ClinicalSite?    @relation(fields: [siteId], references: [id])
+  department Department?     @relation(fields: [departmentId], references: [id])
+  assignments Assignment[]
+
+  @@index([hospitalId])
+  @@index([siteId])
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model Assignment {
+  id         String   @id @default(cuid())
+  rotationId String
+  studentId  String
+  status     String   @default("ASSIGNED")
+  createdAt  DateTime @default(now())
+
+  rotation Rotation @relation(fields: [rotationId], references: [id], onDelete: Cascade)
+  student  User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([rotationId, studentId])
+}
+
+model Calendar {
+  id     String   @id @default(cuid())
+  orgId  String
+  events CalendarEvent[]
+
+  owner  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model CalendarEvent {
+  id         String            @id @default(cuid())
+  calendarId String
+  title      String
+  type       CalendarEventType @default(OTHER)
+  start      DateTime
+  end        DateTime
+  meta       Json?
+
+  calendar Calendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@index([calendarId, start, end])
+}
