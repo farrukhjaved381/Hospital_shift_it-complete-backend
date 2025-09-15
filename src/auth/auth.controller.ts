@@ -4,6 +4,8 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  Get,
+  Query,
   // Removed UseGuards and Request as they are not needed for these core auth endpoints
 } from '@nestjs/common';
 import {
@@ -127,6 +129,15 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @Post('verify-email')
   async verifyEmail(@Body('token') token: string) {
+    return this.authService.verifyEmail(token);
+  }
+
+  // Convenience alias to support GET verification links (SOW-aligned)
+  @ApiOperation({ summary: 'Verify email (GET link)' })
+  @ApiResponse({ status: 200, description: 'Email verified' })
+  @HttpCode(HttpStatus.OK)
+  @Get('verify-email')
+  async verifyEmailGet(@Query('token') token: string) {
     return this.authService.verifyEmail(token);
   }
 

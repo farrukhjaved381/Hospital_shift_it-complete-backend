@@ -26,6 +26,8 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role, OrganizationType } from '@prisma/client';
+import { Req } from '@nestjs/common';
+import type { RequestWithUser } from '../auth/interfaces/request-with-user.interface';
 
 @ApiTags('Organizations (SuperAdmin Only)')
 @ApiBearerAuth('JWT-auth')
@@ -49,7 +51,7 @@ export class OrganizationsController {
   async createOrganization(
     @Body() createOrganizationDto: CreateOrganizationDto,
   ): Promise<OrganizationResponseDto> {
-    return this.organizationsService.createOrganization(createOrganizationDto);
+    return this.organizationsService.create(createOrganizationDto);
   }
 
   @ApiOperation({ summary: 'Get all organizations' })
@@ -60,7 +62,7 @@ export class OrganizationsController {
   })
   @Get()
   async getAllOrganizations(): Promise<OrganizationResponseDto[]> {
-    return this.organizationsService.getAllOrganizations();
+    return this.organizationsService.findAll();
   }
 
   @ApiOperation({ summary: 'Get organizations by type' })
@@ -78,7 +80,7 @@ export class OrganizationsController {
   async getOrganizationsByType(
     @Query('type') type: OrganizationType,
   ): Promise<OrganizationResponseDto[]> {
-    return this.organizationsService.getOrganizationsByType(type);
+    return this.organizationsService.findByType(type);
   }
 
   @ApiOperation({ summary: 'Get organization by ID' })
@@ -98,7 +100,7 @@ export class OrganizationsController {
   })
   @Get(':id')
   async getOrganizationById(@Param('id') id: string): Promise<OrganizationResponseDto> {
-    return this.organizationsService.getOrganizationById(id);
+    return this.organizationsService.findOne(id);
   }
 
   @ApiOperation({ summary: 'Invite an admin to an organization' })
@@ -122,8 +124,9 @@ export class OrganizationsController {
     description: 'User with this email already exists',
   })
   @Post('invite-admin')
-  async inviteAdmin(@Body() inviteAdminDto: InviteAdminDto) {
-    return this.organizationsService.inviteAdmin(inviteAdminDto);
+  async inviteAdmin(@Body() inviteAdminDto: InviteAdminDto, @Req() req: RequestWithUser) {
+    const { organizationId, email, role } = inviteAdminDto;
+    return this.organizationsService.inviteAdmin(organizationId, email, role, req.user.id);
   }
 
   @ApiOperation({ summary: 'Get organization members' })
@@ -174,7 +177,7 @@ export class OrganizationsController {
   })
   @Get(':id/members')
   async getOrganizationMembers(@Param('id') id: string) {
-    return this.organizationsService.getOrganizationMembers(id);
+    return this.organizationsService.findOrganizationWithMembers(id);
   }
 
   @ApiOperation({ summary: 'Deactivate an organization' })
@@ -200,6 +203,7 @@ export class OrganizationsController {
   @HttpCode(HttpStatus.OK)
   @Delete(':id')
   async deactivateOrganization(@Param('id') id: string) {
-    return this.organizationsService.deactivateOrganization(id);
+    await this.organizationsService.remove(id);
+    return { message: 'Organization deleted' };
   }
 }

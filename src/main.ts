@@ -39,5 +39,7 @@ async function bootstrap() {
   app.enableCors();
 
   await app.listen(3000); // Listen on port 3000
+  console.log(`Application is running on: ${await app.getUrl()}`);
+  console.log(`Swagger UI is available at: ${await app.getUrl()}/api`);
 }
 bootstrap();

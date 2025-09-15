@@ -168,16 +168,16 @@ export class UserService {
     }
 
     // If password is being updated, hash it
+    let newPasswordHash: string | undefined;
     if (updateUserDto.password) {
-      updateUserDto.passwordHash = await bcrypt.hash(updateUserDto.password, 12);
-      delete updateUserDto.password; // Remove plain password before updating
+      newPasswordHash = await bcrypt.hash(updateUserDto.password, 12);
     }
 
     const user = await this.prisma.user.update({
       where: { id },
       data: {
         email: updateUserDto.email,
-        passwordHash: updateUserDto.passwordHash,
+        passwordHash: newPasswordHash,
         firstName: updateUserDto.firstName,
         lastName: updateUserDto.lastName,
         role: updateUserDto.role,

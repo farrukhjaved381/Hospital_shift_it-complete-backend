@@ -86,4 +86,18 @@ export class UserEntity implements Omit<PrismaUser, 'passwordHash'> { // Omit pa
   constructor(partial: Partial<PrismaUser>) {
     Object.assign(this, partial);
   }
+
+  // Provide a simple mapper for controller responses
+  toResponse() {
+    return {
+      id: this.id,
+      email: this.email,
+      firstName: this.firstName,
+      lastName: this.lastName,
+      role: this.role,
+      userType: this.userType,
+      affiliationId: this.affiliationId ?? null,
+      emailVerified: this.emailVerified,
+    };
+  }
 }

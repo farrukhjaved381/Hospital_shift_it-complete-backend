@@ -16,10 +16,14 @@ import { PrismaModule } from '../prisma/prisma.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        // Use access token secret from env (align with .env keys)
-        secret: configService.get<string>('JWT_ACCESS_SECRET'),
+        // RS256 if keys present, else HS256 with secret
+        privateKey: configService.get<string>('JWT_PRIVATE_KEY') || undefined,
+        publicKey: configService.get<string>('JWT_PUBLIC_KEY') || undefined,
+        secret: !configService.get<string>('JWT_PRIVATE_KEY')
+          ? configService.get<string>('JWT_ACCESS_SECRET')
+          : undefined,
         signOptions: {
-          // Align with .env key JWT_ACCESS_EXPIRATION (e.g., '15m')
+          algorithm: configService.get<string>('JWT_PRIVATE_KEY') ? 'RS256' : 'HS256',
           expiresIn: configService.get<string>('JWT_ACCESS_EXPIRATION') || '15m',
         },
       }),

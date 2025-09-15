@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, UnauthorizedException, BadRequestException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
-import * as bcrypt from 'bcrypt';
+import { hashString, verifyHash } from './utils/hash.util';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -37,7 +37,7 @@ export class AuthService {
       throw new ConflictException('User with this email already exists.');
     }
 
-    const passwordHash = await bcrypt.hash(registerDto.password, 12);
+    const passwordHash = await hashString(registerDto.password);
 
     let userRole: Role = registerDto.role || Role.STUDENT; // Default to STUDENT if not provided
     let userAffiliationId: string | null = registerDto.affiliationId || null;
@@ -88,7 +88,7 @@ export class AuthService {
 
     // Create email verification token (dev: return it via log)
     const emailTokenPlain = randomBytes(32).toString('hex');
-    const emailTokenHash = await bcrypt.hash(emailTokenPlain, 12);
+    const emailTokenHash = await hashString(emailTokenPlain);
     const emailExpiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24h
     const emailToken = await this.prisma.emailVerification.create({
       data: { userId: user.id, tokenHash: emailTokenHash, expiresAt: emailExpiresAt },
@@ -127,7 +127,7 @@ export class AuthService {
       throw new UnauthorizedException('Email not verified. Please check your inbox.');
     }
 
-    const isPasswordValid = await bcrypt.compare(loginDto.password, user.passwordHash);
+    const isPasswordValid = await verifyHash(loginDto.password, user.passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials.');
     }
@@ -151,7 +151,7 @@ export class AuthService {
       return { message: 'If the email exists, a reset was sent' };
     }
     const tokenPlain = randomBytes(48).toString('hex');
-    const tokenHash = await bcrypt.hash(tokenPlain, 12);
+    const tokenHash = await hashString(tokenPlain);
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 2); // 2 hours
     const created = await this.prisma.passwordReset.create({
       data: { userId: user.id, tokenHash, expiresAt },
@@ -170,9 +170,9 @@ export class AuthService {
     if (!record || record.used || record.expiresAt < new Date()) {
       throw new UnauthorizedException('Invalid or expired reset token');
     }
-    const ok = await bcrypt.compare(tokenPlain, record.tokenHash);
+    const ok = await verifyHash(tokenPlain, record.tokenHash);
     if (!ok) throw new UnauthorizedException('Invalid reset token');
-    const passwordHash = await bcrypt.hash(dto.newPassword, 12);
+    const passwordHash = await hashString(dto.newPassword);
     await this.prisma.user.update({ where: { id: record.userId }, data: { passwordHash } });
     await this.prisma.passwordReset.update({ where: { id: record.id }, data: { used: true } });
     await this.revokeAllUserRefreshTokens(record.userId);
@@ -188,7 +188,7 @@ export class AuthService {
     if (!rec || rec.used || rec.expiresAt < new Date()) {
       throw new UnauthorizedException('Invalid or expired verification token');
     }
-    const ok = await bcrypt.compare(tokenPlain, rec.tokenHash);
+    const ok = await verifyHash(tokenPlain, rec.tokenHash);
     if (!ok) throw new UnauthorizedException('Invalid verification token');
     await this.prisma.user.update({ where: { id: rec.userId }, data: { emailVerified: true } });
     await this.prisma.emailVerification.update({ where: { id: rec.id }, data: { used: true } });
@@ -204,14 +204,14 @@ export class AuthService {
     if (!invite || invite.used || invite.expiresAt < new Date()) {
       throw new UnauthorizedException('Invalid or expired invite');
     }
-    const ok = await bcrypt.compare(tokenPlain, invite.token);
+    const ok = await verifyHash(tokenPlain, invite.token);
     if (!ok) throw new UnauthorizedException('Invalid invite token');
 
     const org = invite.orgId ? await this.prisma.organization.findUnique({ where: { id: invite.orgId } }) : null;
     if (!org) throw new UnauthorizedException('Invite organization not found');
 
     let user = await this.prisma.user.findUnique({ where: { email: invite.inviteeEmail } });
-    const passwordHash = await bcrypt.hash(dto.password, 12);
+    const passwordHash = await hashString(dto.password);
     const userType = org.type === 'HOSPITAL' ? UserType.HOSPITAL_USER : UserType.SCHOOL_USER;
 
     if (!user) {
@@ -279,7 +279,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid refresh token.');
     }
 
-    const isTokenValid = await bcrypt.compare(tokenPlain, storedRefreshToken.tokenHash);
+    const isTokenValid = await verifyHash(tokenPlain, storedRefreshToken.tokenHash);
     if (!isTokenValid) {
       this.logger.warn(`Invalid refresh token for id ${tokenId}. Revoking all tokens due to potential replay attack.`);
       // If an invalid refresh token is presented, revoke all tokens for the user
@@ -336,7 +336,7 @@ export class AuthService {
     const { tokenId, tokenPlain } = this.parseCompositeToken(dto.refreshToken);
     const storedToken = await this.prisma.refreshToken.findUnique({ where: { id: tokenId } });
     if (!storedToken) return;
-    const isTokenMatch = await bcrypt.compare(tokenPlain, storedToken.tokenHash);
+    const isTokenMatch = await verifyHash(tokenPlain, storedToken.tokenHash);
     if (!isTokenMatch) return;
     await this.prisma.refreshToken.update({ where: { id: storedToken.id }, data: { revoked: true } });
   }
@@ -396,7 +396,7 @@ export class AuthService {
   private async saveRefreshToken(userId: string, refreshTokenPlain: string, replacedById?: string): Promise<string> {
     const expiresAt = this.computeExpiryFromDaysEnv(this.configService.get<string>('JWT_REFRESH_EXPIRATION') ?? '7d');
 
-    const tokenHash = await bcrypt.hash(refreshTokenPlain, 12);
+    const tokenHash = await hashString(refreshTokenPlain);
 
     const created = await this.prisma.refreshToken.create({
       data: {

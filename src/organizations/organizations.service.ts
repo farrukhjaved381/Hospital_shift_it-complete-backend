@@ -3,8 +3,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateOrganizationDto } from './dto/create-organization.dto';
 import { OrganizationResponseDto } from './dto/organization-response.dto';
 import { Role, OrganizationType, UserType } from '@prisma/client'; // Import UserType
-import { CreateUserDto } from '../users/dto/create-user.ts'; // Import CreateUserDto
-import * as bcrypt from 'bcrypt'; // Import bcrypt
+import { CreateUserDto } from '../users/dto/create-user'; // Import CreateUserDto
+import { hashString } from '../auth/utils/hash.util'; // use unified hasher
 import { UserResponseDto } from '../users/dto/user-response.dto'; // Import UserResponseDto
 
 @Injectable()
@@ -86,7 +86,7 @@ export class OrganizationsService {
     roleToCreate: Role,
     invitedBy: string,
   ): Promise<{ inviteId: string; message: string }> {
-    if (![Role.HOSPITAL_ADMIN, Role.SCHOOL_ADMIN].includes(roleToCreate)) {
+    if (roleToCreate !== Role.HOSPITAL_ADMIN && roleToCreate !== Role.SCHOOL_ADMIN) {
       throw new BadRequestException('Only HOSPITAL_ADMIN or SCHOOL_ADMIN roles can be invited.');
     }
 
@@ -108,7 +108,7 @@ export class OrganizationsService {
     }
 
     // Generate a unique token for the invite
-    const token = await bcrypt.hash(Math.random().toString(), 10); // Hash a random string
+    const token = await hashString(Math.random().toString()); // Hash a random string
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 7); // Invite valid for 7 days
 
@@ -134,15 +134,15 @@ export class OrganizationsService {
    * @returns The created admin user.
    */
   async createAdmin(createAdminDto: CreateUserDto): Promise<OrganizationResponseDto> { // Use CreateUserDto
-    const { email, password, firstName, lastName, orgId, role } = createAdminDto;
+    const { email, password, firstName, lastName, affiliationId, role } = createAdminDto as any;
 
-    if (![Role.HOSPITAL_ADMIN, Role.SCHOOL_ADMIN].includes(role)) {
+    if (role !== Role.HOSPITAL_ADMIN && role !== Role.SCHOOL_ADMIN) {
       throw new BadRequestException('Only HOSPITAL_ADMIN or SCHOOL_ADMIN roles can be created directly.');
     }
 
-    const organization = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    const organization = await this.prisma.organization.findUnique({ where: { id: affiliationId } });
     if (!organization) {
-      throw new NotFoundException(`Organization with ID ${orgId} not found.`);
+      throw new NotFoundException(`Organization with ID ${affiliationId} not found.`);
     }
 
     const existingUser = await this.prisma.user.findUnique({ where: { email } });
@@ -150,7 +150,7 @@ export class OrganizationsService {
       throw new ConflictException(`User with email ${email} already exists.`);
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    const passwordHash = await hashString(password);
 
     const user = await this.prisma.user.create({
       data: {
@@ -160,7 +160,7 @@ export class OrganizationsService {
         lastName,
         role,
         userType: role === Role.HOSPITAL_ADMIN ? UserType.HOSPITAL_USER : UserType.SCHOOL_USER, // Set userType based on role
-        affiliationId: orgId,
+        affiliationId: affiliationId,
         emailVerified: true, // Admins created directly are considered verified
       },
     });
@@ -169,7 +169,7 @@ export class OrganizationsService {
     await this.prisma.membership.create({
       data: {
         userId: user.id,
-        organizationId: orgId,
+        organizationId: affiliationId,
         role,
       },
     });
@@ -230,5 +230,12 @@ export class OrganizationsService {
     await this.prisma.organization.delete({
       where: { id },
     });
+  }
+
+  /**
+   * Returns organizations filtered by type.
+   */
+  async findByType(type: OrganizationType): Promise<OrganizationResponseDto[]> {
+    return this.prisma.organization.findMany({ where: { type } });
   }
 }
