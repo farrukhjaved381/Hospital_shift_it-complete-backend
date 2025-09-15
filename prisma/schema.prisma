@@ -6,7 +6,6 @@
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../generated/prisma"
 }
 
 datasource db {
@@ -14,80 +13,147 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// Enum for User Roles within an organization
 enum Role {
-  SUPER_ADMIN
-  HOSPITAL_ADMIN
-  SCHOOL_ADMIN
-  STUDENT
+  SUPER_ADMIN // Can create hospitals/schools, approve onboarding requests, global analytics
+  HOSPITAL_ADMIN // Manages a hospital, invites hospital members, sets up departments/sites/shifts, verifies documents
+  SCHOOL_ADMIN // Manages a school, enrolls students, proposes rotations
+  STUDENT // Can view shifts, upload documents, chat
 }
 
+// Enum for Organization Types
 enum OrganizationType {
   HOSPITAL
   SCHOOL
 }
 
+// New Enum for User Affiliation Type
+enum AffiliationType {
+  NONE
+  HOSPITAL
+  SCHOOL
+}
+
+// New Enum for User Type
+enum UserType {
+  NONE          // no special affiliation
+  STUDENT
+  HOSPITAL_USER // regular hospital user (non-admin)
+  SCHOOL_USER   // regular school user (non-admin)
+}
+
 model User {
-  id          String   @id @default(cuid())
-  email       String   @unique
-  username    String   @unique
-  password    String
-  firstName   String
-  lastName    String
-  role        Role     @default(STUDENT)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Relationships
-  memberships   Membership[]
-  refreshTokens RefreshToken[]
-  
-  @@map("users")
+  id            String      @id @default(cuid()) // Changed to cuid()
+  email         String      @unique
+  passwordHash  String // Renamed from password to passwordHash
+  firstName     String
+  lastName      String
+  role          Role        @default(STUDENT) // permission-aware role
+  userType      UserType    @default(NONE)    // descriptive user type / affiliation
+  affiliationId String?     // optional organization id they belong to (hospital or school)
+  affiliation   Organization? @relation("UserAffiliation", fields: [affiliationId], references: [id]) // Added relation name
+  emailVerified Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  // security/session fields
+  refreshTokens RefreshToken[] // stored hashed refresh tokens (rotation + revocation)
+  auditLogs     AuditLog[]
+  profile       Profile? // One-to-one relationship with Profile (kept from previous schema)
+  memberships   Membership[] // User can be part of multiple organizations (kept from previous schema)
+  passwordResets PasswordReset[] @relation("UserPasswordResets") // Corrected: Added relation name
+  emailVerifications EmailVerification[]
+}
+
+model Profile {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  address   String?
+  phone     String?
+  dob       DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model Organization {
-  id          String           @id @default(cuid())
-  name        String
-  type        OrganizationType
-  address     String?
-  phone       String?
-  email       String?
-  isActive    Boolean          @default(true)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  
-  // Relationships
-  memberships Membership[]
-  
-  @@map("organizations")
+  id        String   @id @default(cuid())
+  name      String
+  type      OrganizationType
+  createdAt DateTime @default(now())
+  memberships  Membership[]
+  usersWithAffiliation User[] @relation("UserAffiliation") // Explicitly named relation
 }
 
 model Membership {
-  id             String       @id @default(cuid())
+  id             String       @id @default(uuid())
   userId         String
   organizationId String
   role           Role
-  isActive       Boolean      @default(true)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
-  
-  // Relationships
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  
+
   @@unique([userId, organizationId])
-  @@map("memberships")
 }
 
+// New Model for Refresh Tokens
 model RefreshToken {
-  id        String   @id @default(cuid())
-  token     String   @unique
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   // hashed (e.g., argon2 or bcrypt) version of refresh token
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  revoked    Boolean  @default(false)
+  replacedBy String?  // id of token that replaced this (rotation chain)
+  user       User     @relation(fields: [userId], references: [id])
+  @@index([userId])
+}
+
+// New Model for Invites
+model Invite {
+  id          String   @id @default(cuid())
+  inviteeEmail String
+  orgId       String?
+  roleToCreate Role?   // e.g., HOSPITAL_ADMIN or SCHOOL_ADMIN
+  invitedBy   String   // userId of SuperAdmin
+  token       String   // random invite token (hashed if persisted)
+  used        Boolean  @default(false)
+  expiresAt   DateTime
+  createdAt   DateTime @default(now())
+}
+
+// New Model for Password Resets
+model PasswordReset {
+  id        String  @id @default(cuid())
   userId    String
+  tokenHash String
+  used      Boolean @default(false)
   expiresAt DateTime
   createdAt DateTime @default(now())
-  
-  // Relationships
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-  
-  @@map("refresh_tokens")
+  user      User @relation("UserPasswordResets", fields: [userId], references: [id]) // Added relation name
+}
+
+// New Model for Audit Logs
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String
+  action    String
+  meta      Json?
+  createdAt DateTime @default(now())
+  actor     User     @relation(fields: [actorId], references: [id])
+}
+
+// Email verification tokens per user
+model EmailVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String
+  used      Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }

@@ -6,21 +6,21 @@ import { PrismaService } from '../prisma/prisma.service';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 
 @Injectable()
-export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
+export class RefreshStrategy extends PassportStrategy(Strategy, 'jwt-refresh') {
   constructor(
     private readonly configService: ConfigService,
     private readonly prisma: PrismaService,
   ) {
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromBodyField('refreshToken'),
       ignoreExpiration: false,
-      secretOrKey: configService.get<string>('JWT_ACCESS_SECRET') ?? '', // Use access secret
+      secretOrKey: configService.get<string>('JWT_ACCESS_SECRET') ?? '',
     });
   }
 
   /**
-   * Validates the JWT payload and returns the authenticated user.
-   * @param payload The JWT payload extracted from the token.
+   * Validates the refresh JWT payload and returns the authenticated user.
+   * @param payload The JWT payload extracted from the refresh token.
    * @returns The user object if validation is successful.
    * @throws UnauthorizedException if the user is not found or is inactive.
    */
@@ -32,22 +32,10 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
         email: true,
         firstName: true,
         lastName: true,
-        role: true,
-        userType: true,
-        affiliationId: true,
-        emailVerified: true,
-        memberships: {
-          select: {
-            role: true,
-            organization: {
-              select: {
-                id: true,
-                name: true,
-                type: true, // Corrected: use 'type' instead of 'organizationType'
-              },
-            },
-          },
-        },
+        role: true, // Include role
+        userType: true, // Include userType
+        affiliationId: true, // Include affiliationId
+        emailVerified: true, // Check emailVerified
       },
     });
 
@@ -55,6 +43,6 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       throw new UnauthorizedException('User not found or email not verified');
     }
 
-    return user;
+    return { ...user, refreshToken: payload.exp }; // Placeholder to include refresh token for context if needed
   }
 }

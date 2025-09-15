@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { Role, UserType } from '@prisma/client'; // Import Role and UserType
 
 export class AuthResponseDto {
   @ApiProperty({
@@ -34,6 +35,9 @@ export class AuthResponseDto {
     email: string;
     firstName: string;
     lastName: string;
-    role: string;
+    role: Role; // Include Role
+    userType: UserType; // Include UserType
+    affiliationId: string | null; // Include affiliationId
+    emailVerified: boolean; // Include emailVerified
   };
 }

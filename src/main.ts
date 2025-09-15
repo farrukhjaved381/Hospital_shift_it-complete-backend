@@ -1,50 +1,43 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { ValidationPipe, VersioningType } from '@nestjs/common';
+import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // Global validation pipe
+  // Enable API Versioning
+  app.enableVersioning({
+    type: VersioningType.URI,
+    prefix: 'api/v', // This will result in routes like /api/v1/resource
+  });
+
+  // Apply global validation pipe
   app.useGlobalPipes(
     new ValidationPipe({
-      transform: true,
-      whitelist: true,
-      forbidNonWhitelisted: true,
+      whitelist: true, // Automatically remove properties that are not defined in the DTO
+      forbidNonWhitelisted: true, // Throw an error if non-whitelisted properties are provided
+      transform: true, // Automatically transform payloads to be objects of their DTO classes
+      transformOptions: {
+        enableImplicitConversion: true, // Enable implicit conversion of types based on TS metadata
+      },
     }),
   );
 
-  // CORS configuration
-  app.enableCors({
-    origin: true,
-    credentials: true,
-  });
-
-  // Swagger configuration
+  // Swagger Configuration
   const config = new DocumentBuilder()
-    .setTitle('Hospital Management System API')
-    .setDescription('API for managing hospital-school scheduling, compliance, and billing')
+    .setTitle('Hospital Project API')
+    .setDescription('The API documentation for the Hospital Project')
     .setVersion('1.0')
-    .addBearerAuth(
-      {
-        type: 'http',
-        scheme: 'bearer',
-        bearerFormat: 'JWT',
-        name: 'JWT',
-        description: 'Enter JWT token',
-        in: 'header',
-      },
-      'JWT-auth',
-    )
+    .addBearerAuth() // Enable JWT authentication in Swagger
     .build();
 
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api', app, document);
+  SwaggerModule.setup('api', app, document); // Swagger UI will be available at /api
 
-  const port = process.env.PORT ?? 3000;
-  await app.listen(port);
-  console.log(`Application is running on: http://localhost:${port}`);
-  console.log(`Swagger documentation: http://localhost:${port}/api`);
+  // Enable CORS for frontend integration
+  app.enableCors();
+
+  await app.listen(3000); // Listen on port 3000
 }
 bootstrap();

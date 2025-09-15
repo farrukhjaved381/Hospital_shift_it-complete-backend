@@ -1,23 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum } from 'class-validator';
-import { Role } from '../../../generated/prisma';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsEmail, IsNotEmpty, IsString, MinLength, IsEnum, IsOptional, IsUUID } from 'class-validator';
+import { Role, OrganizationType } from '@prisma/client'; // Import OrganizationType
 
 export class RegisterDto {
   @ApiProperty({
     description: 'User email address',
-    example: 'john.doe@hospital.com',
+    example: 'john.doe@example.com',
   })
   @IsEmail()
   @IsNotEmpty()
   email: string;
-
-  @ApiProperty({
-    description: 'Username',
-    example: 'johndoe123',
-  })
-  @IsString()
-  @IsNotEmpty()
-  username: string;
 
   @ApiProperty({
     description: 'User password',
@@ -45,12 +37,34 @@ export class RegisterDto {
   @IsNotEmpty()
   lastName: string;
 
-  @ApiProperty({
-    description: 'User role',
+  @ApiPropertyOptional({
+    description: 'Optional ID of the organization the user wants to affiliate with',
+    example: 'clsdlfkn10001smk1h6d99f2h',
+    nullable: true,
+  })
+  @IsUUID()
+  @IsOptional()
+  affiliationId?: string;
+
+  @ApiPropertyOptional({
+    description: 'Optional type of the organization the user is affiliating with',
+    enum: OrganizationType,
+    example: OrganizationType.HOSPITAL,
+    nullable: true,
+  })
+  @IsEnum(OrganizationType)
+  @IsOptional()
+  affiliationType?: OrganizationType;
+
+  // Role is not allowed to be set during self-registration, but included for completeness in DTO
+  // and for potential internal use or different registration flows.
+  @ApiPropertyOptional({
+    description: 'User permission role (will be ignored for self-registration and defaults to STUDENT)',
     enum: Role,
     example: Role.STUDENT,
+    nullable: true,
   })
   @IsEnum(Role)
-  @IsNotEmpty()
-  role: Role;
+  @IsOptional()
+  role?: Role;
 }

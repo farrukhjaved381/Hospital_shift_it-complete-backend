@@ -5,7 +5,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
-import { TokenHelpers } from './token.helpers';
+import { RefreshStrategy } from './refresh.strategy'; // Import RefreshStrategy
 import { PrismaModule } from '../prisma/prisma.module';
 
 @Module({
@@ -16,8 +16,10 @@ import { PrismaModule } from '../prisma/prisma.module';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_ACCESS_SECRET') || 'default-secret',
+        // Use access token secret from env (align with .env keys)
+        secret: configService.get<string>('JWT_ACCESS_SECRET'),
         signOptions: {
+          // Align with .env key JWT_ACCESS_EXPIRATION (e.g., '15m')
           expiresIn: configService.get<string>('JWT_ACCESS_EXPIRATION') || '15m',
         },
       }),
@@ -25,7 +27,16 @@ import { PrismaModule } from '../prisma/prisma.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, TokenHelpers],
-  exports: [AuthService, JwtStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RefreshStrategy, // Add RefreshStrategy to providers
+    // Removed TokenHelpers
+  ],
+  exports: [
+    AuthService,
+    JwtStrategy,
+    RefreshStrategy, // Export RefreshStrategy
+  ],
 })
 export class AuthModule {}

@@ -2,18 +2,18 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
-import { UserModule } from './users/user.modules';
+import { UsersModule } from './users/user.modules';
+import { PrismaModule } from './prisma/prisma.module';
+import { OrganizationsModule } from './organizations/organizations.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({
-      isGlobal: true,
-    }),
-    PrismaModule,
+    ConfigModule.forRoot({ isGlobal: true }), // Loads .env file and makes it globally available
     AuthModule,
-    UserModule,
+    UsersModule,
+    PrismaModule,
+    OrganizationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
