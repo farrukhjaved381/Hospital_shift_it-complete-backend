@@ -6,10 +6,11 @@ import { ChangeDocumentStatusDto, DTOStatus as DocStatus } from './dto/change-do
 import { CreateVerificationDto } from './dto/create-verification.dto';
 import { ChangeVerificationStatusDto, DTOStatus as VerStatus } from './dto/change-verification-status.dto';
 import { Role } from '@prisma/client';
+import { S3Service } from './storage/s3.service';
 
 @Injectable()
 export class VerificationsService {
-  constructor(private readonly repo: VerificationsRepository) {}
+  constructor(private readonly repo: VerificationsRepository, private readonly s3: S3Service) {}
 
   private assertSelfOrAdmin(user: any, targetUserId: string) {
     if (user.role === Role.SUPER_ADMIN) return;
@@ -20,8 +21,10 @@ export class VerificationsService {
 
   async presign(dto: UploadPresignDto, user: any) {
     this.assertSelfOrAdmin(user, dto.userId);
-    const fakeKey = `uploads/${dto.userId}/${Date.now()}_${dto.filename}`;
-    const fakeUrl = `s3://bucket/${fakeKey}`;
+    const bucket = process.env.S3_BUCKET || 'local-bucket';
+    const key = `uploads/${dto.userId}/${Date.now()}_${dto.filename}`;
+    const presignedUrl = await this.s3.getPresignedPutUrl({ bucket, key, contentType: dto.contentType, ttlSeconds: 600 });
+    const fakeUrl = `s3://${bucket}/${key}`;
     const expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
     const doc = await this.repo.createDocument({
       userId: dto.userId,
@@ -31,7 +34,7 @@ export class VerificationsService {
       status: 'PENDING',
       expiresAt,
     });
-    return { presignedUrl: `https://example-presign/${fakeKey}`, document: doc };
+    return { presignedUrl, document: doc };
   }
 
   async confirmUpload(dto: ConfirmUploadDto, user: any) {
@@ -77,4 +80,3 @@ export class VerificationsService {
     return this.repo.overdue(days);
   }
 }
-
