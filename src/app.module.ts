@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/user.modules';
 import { PrismaModule } from './prisma/prisma.module';
 import { OrganizationsModule } from './organizations/organizations.module';
+import { VerificationsModule } from './verifications/verifications.module';
 import { SchedulingModule } from './scheduling/scheduling.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { SchedulingModule } from './scheduling/scheduling.module';
     PrismaModule,
     OrganizationsModule,
     SchedulingModule,
+    VerificationsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

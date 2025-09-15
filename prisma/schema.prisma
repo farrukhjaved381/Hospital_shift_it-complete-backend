@@ -300,3 +300,55 @@ model CalendarEvent {
 
   @@index([calendarId, start, end])
 }
+
+// -------- Compliance & Verifications (Phase 3) --------
+
+enum VerificationType {
+  DOCUMENT
+  DRUG_TEST
+  BACKGROUND_CHECK
+}
+
+enum Status {
+  PENDING
+  APPROVED
+  DENIED
+  EXPIRED
+}
+
+model Document {
+  id           String     @id @default(cuid())
+  userId       String
+  name         String
+  url          String
+  type         VerificationType
+  status       Status     @default(PENDING)
+  expiresAt    DateTime?
+  uploadedAt   DateTime?  @default(now())
+  meta         Json?
+  verification Verification?
+  user         User       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+}
+
+model Verification {
+  id          String           @id @default(cuid())
+  userId      String
+  type        VerificationType
+  status      Status           @default(PENDING)
+  cost        Float?
+  partnerRef  String?
+  partnerMeta Json?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  documentId  String?
+  document    Document?        @relation(fields: [documentId], references: [id])
+  invoiceId   String?
+  user        User             @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status])
+  @@index([partnerRef])
+}
