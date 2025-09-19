@@ -21,9 +21,32 @@ export async function hashString(plain: string): Promise<string> {
 }
 
 export async function verifyHash(plain: string, hashed: string): Promise<boolean> {
-  if (argon2) {
-    return argon2.verify(hashed, plain);
-  }
-  return bcrypt.compare(plain, hashed);
-}
+  // Detect bcrypt vs argon2 by prefix to support legacy bcrypt hashes from seed
+  // bcrypt hashes start with $2a$, $2b$, or $2y$
+  const isBcrypt = typeof hashed === 'string' && /^\$2[aby]\$/.test(hashed);
+  const isArgon2 = typeof hashed === 'string' && /^\$argon2/.test(hashed);
 
+  try {
+    if (isArgon2 && argon2) {
+      return await argon2.verify(hashed, plain);
+    }
+    if (isBcrypt) {
+      return await bcrypt.compare(plain, hashed);
+    }
+    // Fallbacks: prefer argon2 when available, else bcrypt
+    if (argon2) {
+      return await argon2.verify(hashed, plain);
+    }
+    return await bcrypt.compare(plain, hashed);
+  } catch (_) {
+    // In case of algorithm mismatch errors, try the other algorithm once
+    try {
+      if (argon2) {
+        return await argon2.verify(hashed, plain);
+      }
+      return await bcrypt.compare(plain, hashed);
+    } catch {
+      return false;
+    }
+  }
+}

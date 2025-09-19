@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditService } from '../common/audit/audit.service';
 import { CreateRotationRequestDto } from './dto/create-rotation-request.dto';
 import { ApproveRotationRequestDto } from './dto/approve-rotation-request.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
@@ -11,7 +12,7 @@ import { detectConflicts } from './utils/conflict.utils';
 
 @Injectable()
 export class SchedulingService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly audit: AuditService) {}
 
   private async assertOrg(id: string, type: OrganizationType) {
     const org = await this.prisma.organization.findUnique({ where: { id } });
@@ -29,19 +30,19 @@ export class SchedulingService {
     await this.assertOrg(dto.hospitalId, OrganizationType.HOSPITAL);
 
     if (dto.siteId) {
-      const site = await (this.prisma as any).clinicalSite.findUnique({ where: { id: dto.siteId } });
+      const site = await this.prisma.clinicalSite.findUnique({ where: { id: dto.siteId } });
       if (!site || site.hospitalId !== dto.hospitalId) throw new BadRequestException('Site does not belong to hospital');
     }
 
     if (dto.departmentId) {
-      const dept = await (this.prisma as any).department.findUnique({ where: { id: dto.departmentId } });
+      const dept = await this.prisma.department.findUnique({ where: { id: dto.departmentId } });
       if (!dept || (dto.siteId && dept.siteId !== dto.siteId)) throw new BadRequestException('Invalid department/site');
     }
 
     const start = new Date(dto.startDate);
     const end = new Date(dto.endDate);
     const hospitalCal = await this.getOrCreateCalendar(dto.hospitalId);
-    const events = await (this.prisma as any).calendarEvent.findMany({
+    const events = await this.prisma.calendarEvent.findMany({
       where: { calendarId: hospitalCal.id, start: { lt: end }, end: { gt: start } },
       orderBy: { start: 'asc' },
     });
@@ -50,7 +51,7 @@ export class SchedulingService {
       throw new BadRequestException({ message: 'Conflicts detected', conflicts });
     }
 
-    return (this.prisma as any).rotationRequest.create({
+    const created = await this.prisma.rotationRequest.create({
       data: {
         schoolId: dto.schoolId,
         hospitalId: dto.hospitalId,
@@ -59,16 +60,18 @@ export class SchedulingService {
         specialty: dto.specialty,
         startDate: start,
         endDate: end,
-        shift: dto.shift as any,
+        shift: dto.shift,
         hoursPerShift: dto.hoursPerShift,
         studentRoster: dto.studentRoster,
         status: 'PENDING',
       },
     });
+    await this.audit.log(user.id || null, 'ROTATION_REQUEST_CREATED', { requestId: created.id, schoolId: created.schoolId, hospitalId: created.hospitalId });
+    return created;
   }
 
   async getRotationRequest(id: string, user: any) {
-    const req = await (this.prisma as any).rotationRequest.findUnique({ where: { id } });
+    const req = await this.prisma.rotationRequest.findUnique({ where: { id } });
     if (!req) throw new NotFoundException('Request not found');
     if (user.role !== Role.SUPER_ADMIN) {
       if (user.role === Role.SCHOOL_ADMIN && user.affiliationId !== req.schoolId) throw new ForbiddenException();
@@ -90,11 +93,11 @@ export class SchedulingService {
         { endDate: { gt: new Date(query.from) } },
       ];
     }
-    return (this.prisma as any).rotationRequest.findMany({ where, orderBy: { createdAt: 'desc' } });
+    return this.prisma.rotationRequest.findMany({ where, orderBy: { createdAt: 'desc' } });
   }
 
   async approveRotationRequest(id: string, dto: ApproveRotationRequestDto, user: any) {
-    const req = await (this.prisma as any).rotationRequest.findUnique({ where: { id } });
+    const req = await this.prisma.rotationRequest.findUnique({ where: { id } });
     if (!req) throw new NotFoundException('Request not found');
     if (req.status !== 'PENDING') throw new BadRequestException('Request not pending');
     if (user.role !== Role.SUPER_ADMIN) {
@@ -102,19 +105,21 @@ export class SchedulingService {
     }
 
     if (dto.status === 'DENIED') {
-      return (this.prisma as any).rotationRequest.update({ where: { id }, data: { status: 'DENIED' } });
+      const denied = await this.prisma.rotationRequest.update({ where: { id }, data: { status: 'DENIED' } });
+      await this.audit.log(user.id || null, 'ROTATION_REQUEST_DENIED', { requestId: id });
+      return denied;
     }
 
     const start = req.startDate;
     const end = req.endDate;
     const hospitalCal = await this.getOrCreateCalendar(req.hospitalId);
-    const events = await (this.prisma as any).calendarEvent.findMany({
+    const events = await this.prisma.calendarEvent.findMany({
       where: { calendarId: hospitalCal.id, start: { lt: end }, end: { gt: start } },
     });
     const conflicts = detectConflicts(events, start, end);
     if (conflicts.length > 0) throw new BadRequestException({ message: 'Conflicts detected', conflicts });
 
-    const rotation = await (this.prisma as any).rotation.create({
+    const rotation = await this.prisma.rotation.create({
       data: {
         requestId: req.id,
         hospitalId: req.hospitalId,
@@ -128,7 +133,19 @@ export class SchedulingService {
       },
     });
 
-    await (this.prisma as any).calendarEvent.create({
+    // Create student assignments for approved rotation
+    if (Array.isArray(req.studentRoster) && req.studentRoster.length) {
+      const students = req.studentRoster.slice(0, rotation.capacity);
+      for (const studentId of students) {
+        try {
+          await this.prisma.assignment.create({ data: { rotationId: rotation.id, studentId } });
+        } catch (e) {
+          // Ignore duplicates or FK violations silently to avoid blocking approval
+        }
+      }
+    }
+
+    const calEvent = await this.prisma.calendarEvent.create({
       data: {
         calendarId: hospitalCal.id,
         title: `Rotation: ${req.specialty}`,
@@ -139,18 +156,21 @@ export class SchedulingService {
       },
     });
 
-    await (this.prisma as any).rotationRequest.update({ where: { id }, data: { status: 'APPROVED' } });
+    await this.prisma.rotationRequest.update({ where: { id }, data: { status: 'APPROVED' } });
+    await this.audit.log(user.id || null, 'ROTATION_REQUEST_APPROVED', { requestId: id, rotationId: rotation.id, calendarEventId: calEvent.id });
     return rotation;
   }
 
   async cancelRotationRequest(id: string, user: any) {
-    const req = await (this.prisma as any).rotationRequest.findUnique({ where: { id } });
+    const req = await this.prisma.rotationRequest.findUnique({ where: { id } });
     if (!req) throw new NotFoundException('Request not found');
     if (user.role !== Role.SUPER_ADMIN) {
       if (user.role !== Role.SCHOOL_ADMIN || user.affiliationId !== req.schoolId) throw new ForbiddenException();
     }
     if (!(['PENDING', 'APPROVED'] as RequestStatus[]).includes(req.status as RequestStatus)) throw new BadRequestException('Cannot cancel');
-    return (this.prisma as any).rotationRequest.update({ where: { id }, data: { status: 'CANCELED' } });
+    const canceled = await this.prisma.rotationRequest.update({ where: { id }, data: { status: 'CANCELED' } });
+    await this.audit.log(user.id || null, 'ROTATION_REQUEST_CANCELED', { requestId: id });
+    return canceled;
   }
 
   async getCalendarEvents(orgId: string, start?: string, end?: string, user?: any) {
@@ -161,14 +181,14 @@ export class SchedulingService {
       where.start = { lt: new Date(end) };
       where.end = { gt: new Date(start) };
     }
-    return (this.prisma as any).calendarEvent.findMany({ where, orderBy: { start: 'asc' } });
+    return this.prisma.calendarEvent.findMany({ where, orderBy: { start: 'asc' } });
   }
 
   async checkConflicts(dto: ConflictCheckDto) {
     const cal = await this.getOrCreateCalendar(dto.hospitalId);
     const start = new Date(dto.start);
     const end = new Date(dto.end);
-    const events = await (this.prisma as any).calendarEvent.findMany({
+    const events = await this.prisma.calendarEvent.findMany({
       where: { calendarId: cal.id, start: { lt: end }, end: { gt: start } },
       orderBy: { start: 'asc' },
     });
@@ -176,8 +196,8 @@ export class SchedulingService {
   }
 
   private async getOrCreateCalendar(orgId: string) {
-    let cal = await (this.prisma as any).calendar.findFirst({ where: { orgId } });
-    if (!cal) cal = await (this.prisma as any).calendar.create({ data: { orgId } });
+    let cal = await this.prisma.calendar.findFirst({ where: { orgId } });
+    if (!cal) cal = await this.prisma.calendar.create({ data: { orgId } });
     return cal;
   }
 }

@@ -8,8 +8,8 @@ async function main() {
   console.log('Start seeding...');
 
   // Seed SuperAdmin
-  const superAdminEmail = process.env.SUPERADMIN_EMAIL || 'superadmin@example.com';
-  const superAdminPassword = process.env.SUPERADMIN_PWD || 'ChangeMe123!'; // IMPORTANT: Change this in .env for production
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL || 'superadmin@example.com';
+  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD || 'Password123'; // IMPORTANT: Change this in .env for production
 
   const passwordHash = await bcrypt.hash(superAdminPassword, 12);
 
