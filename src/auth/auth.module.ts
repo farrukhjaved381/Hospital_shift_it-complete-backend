@@ -8,6 +8,7 @@ import { JwtStrategy } from './jwt.strategy';
 import { RefreshStrategy } from './refresh.strategy'; // Import RefreshStrategy
 import { PrismaModule } from '../prisma/prisma.module';
 import { AuditService } from '../common/audit/audit.service';
+import { EmailService } from '../common/email/email.service';
 
 @Module({
   imports: [
@@ -37,6 +38,7 @@ import { AuditService } from '../common/audit/audit.service';
     JwtStrategy,
     RefreshStrategy, // Add RefreshStrategy to providers
     AuditService,
+    EmailService,
   ],
   exports: [
     AuthService,

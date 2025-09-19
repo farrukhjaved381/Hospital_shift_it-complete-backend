@@ -4,7 +4,7 @@ import * as crypto from 'crypto';
 import { VerificationsRepository } from '../verifications.repository';
 
 @ApiTags('Verifications Webhooks')
-@Controller('verifications/webhooks')
+@Controller({ path: 'verifications/webhooks', version: '1' })
 export class PartnerWebhookController {
   constructor(private readonly repo: VerificationsRepository) {}
 
@@ -29,4 +29,3 @@ export class PartnerWebhookController {
     return { ok: true };
   }
 }
-

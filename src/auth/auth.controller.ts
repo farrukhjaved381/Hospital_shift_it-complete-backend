@@ -23,11 +23,12 @@ import { AuthResponseDto } from './dto/auth-response.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { Throttle } from '@nestjs/throttler';
 import { AcceptInviteDto } from './dto/accept-invite.dto';
 // Removed JwtAuthGuard as it's not needed for these core auth endpoints
 
 @ApiTags('Authentication')
-@Controller('auth')
+@Controller({ path: 'auth', version: '1' })
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
@@ -48,6 +49,7 @@ export class AuthController {
   })
   @ApiBody({ type: RegisterDto })
   @Post('register')
+  @Throttle({ default: { limit: 5, ttl: 60 } })
   async register(@Body() registerDto: RegisterDto): Promise<AuthResponseDto> {
     return this.authService.register(registerDto);
   }
@@ -70,6 +72,7 @@ export class AuthController {
   @ApiBody({ type: LoginDto })
   @HttpCode(HttpStatus.OK)
   @Post('login')
+  @Throttle({ default: { limit: 10, ttl: 60 } })
   async login(@Body() loginDto: LoginDto): Promise<AuthResponseDto> {
     return this.authService.login(loginDto);
   }
@@ -92,6 +95,7 @@ export class AuthController {
   @ApiBody({ type: RefreshTokenDto })
   @HttpCode(HttpStatus.OK)
   @Post('refresh')
+  @Throttle({ default: { limit: 15, ttl: 60 } })
   async refreshTokens(@Body() refreshTokenDto: RefreshTokenDto): Promise<AuthResponseDto> {
     return this.authService.refreshTokens(refreshTokenDto);
   }
@@ -101,6 +105,7 @@ export class AuthController {
   @ApiBody({ type: RefreshTokenDto })
   @HttpCode(HttpStatus.OK)
   @Post('logout')
+  @Throttle({ default: { limit: 20, ttl: 60 } })
   async logout(@Body() dto: RefreshTokenDto): Promise<{ message: string }> {
     await this.authService.logout(dto);
     return { message: 'Logged out' };
@@ -111,6 +116,7 @@ export class AuthController {
   @ApiBody({ type: ForgotPasswordDto })
   @HttpCode(HttpStatus.OK)
   @Post('forgot-password')
+  @Throttle({ default: { limit: 5, ttl: 300 } })
   async forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto);
   }
@@ -120,6 +126,7 @@ export class AuthController {
   @ApiBody({ type: ResetPasswordDto })
   @HttpCode(HttpStatus.OK)
   @Post('reset-password')
+  @Throttle({ default: { limit: 10, ttl: 300 } })
   async resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto);
   }

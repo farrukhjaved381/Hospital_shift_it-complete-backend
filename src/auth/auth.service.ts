@@ -10,6 +10,8 @@ import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtPayload } from './interfaces/jwt-payload.interface';
 import { Role, UserType, OrganizationType } from '@prisma/client'; // Ensure UserType is imported
 import { randomBytes } from 'crypto';
+import { EmailService } from '../common/email/email.service';
+import { AuditService } from '../common/audit/audit.service';
 
 @Injectable()
 export class AuthService {
@@ -19,6 +21,8 @@ export class AuthService {
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
+    private readonly email: EmailService,
+    private readonly audit: AuditService,
   ) {}
 
   /**
@@ -93,9 +97,29 @@ export class AuthService {
     const emailToken = await this.prisma.emailVerification.create({
       data: { userId: user.id, tokenHash: emailTokenHash, expiresAt: emailExpiresAt },
     });
-    this.logger.log(`Email verification token for ${user.email}: ${emailToken.id}.${emailTokenPlain}`);
+    const composite = `${emailToken.id}.${emailTokenPlain}`;
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
+    const link = `${appUrl}/verify-email?token=${encodeURIComponent(composite)}`;
+    await this.email.send(user.email, 'Verify your email', `Click to verify: ${link}`);
 
-    return { user, accessToken, refreshToken: compositeRefreshToken, tokenType: 'Bearer', expiresIn: this.getAccessTtlSeconds() } as any;
+    await this.audit.log(user.id, 'USER_REGISTERED', { email: user.email });
+    const resp: AuthResponseDto = {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        userType: user.userType,
+        affiliationId: user.affiliationId,
+        emailVerified: user.emailVerified,
+      },
+      accessToken,
+      refreshToken: compositeRefreshToken,
+      tokenType: 'Bearer',
+      expiresIn: this.getAccessTtlSeconds(),
+    };
+    return resp;
   }
 
   /**
@@ -136,9 +160,27 @@ export class AuthService {
     const tokenRecordId = await this.saveRefreshToken(user.id, refreshToken);
     const compositeRefreshToken = `${tokenRecordId}.${refreshToken}`;
 
-    const { passwordHash, ...userWithoutPasswordHash } = user; // Exclude passwordHash from response
+    const { passwordHash, ...rest } = user; // Exclude passwordHash from response
+    const userResponse = {
+      id: rest.id,
+      email: rest.email,
+      firstName: rest.firstName,
+      lastName: rest.lastName,
+      role: rest.role,
+      userType: rest.userType,
+      affiliationId: rest.affiliationId,
+      emailVerified: rest.emailVerified,
+    };
 
-    return { user: userWithoutPasswordHash, accessToken, refreshToken: compositeRefreshToken, tokenType: 'Bearer', expiresIn: this.getAccessTtlSeconds() } as any;
+    await this.audit.log(user.id, 'USER_LOGIN_SUCCESS', { email: user.email });
+    const resp: AuthResponseDto = {
+      user: userResponse,
+      accessToken,
+      refreshToken: compositeRefreshToken,
+      tokenType: 'Bearer',
+      expiresIn: this.getAccessTtlSeconds(),
+    };
+    return resp;
   }
 
   /**
@@ -157,8 +199,11 @@ export class AuthService {
       data: { userId: user.id, tokenHash, expiresAt },
     });
     const composite = `${created.id}.${tokenPlain}`;
-    // TODO: email composite
-    return { message: 'Reset email queued', resetToken: composite };
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
+    const link = `${appUrl}/reset-password?token=${encodeURIComponent(composite)}`;
+    await this.email.send(user.email, 'Password reset', `Reset your password: ${link}`);
+    await this.audit.log(user.id, 'PASSWORD_RESET_REQUESTED');
+    return { message: 'Reset email queued' };
   }
 
   /**
@@ -176,6 +221,7 @@ export class AuthService {
     await this.prisma.user.update({ where: { id: record.userId }, data: { passwordHash } });
     await this.prisma.passwordReset.update({ where: { id: record.id }, data: { used: true } });
     await this.revokeAllUserRefreshTokens(record.userId);
+    await this.audit.log(record.userId, 'PASSWORD_RESET_COMPLETED');
     return { message: 'Password reset successful' };
   }
 
@@ -192,6 +238,7 @@ export class AuthService {
     if (!ok) throw new UnauthorizedException('Invalid verification token');
     await this.prisma.user.update({ where: { id: rec.userId }, data: { emailVerified: true } });
     await this.prisma.emailVerification.update({ where: { id: rec.id }, data: { used: true } });
+    await this.audit.log(rec.userId, 'USER_EMAIL_VERIFIED');
     return { message: 'Email verified' };
   }
 
@@ -260,7 +307,15 @@ export class AuthService {
       select: { id: true, email: true, firstName: true, lastName: true, role: true, userType: true, affiliationId: true, emailVerified: true },
     });
 
-    return { user: userResp as any, accessToken, refreshToken: compositeRefreshToken, tokenType: 'Bearer', expiresIn: this.getAccessTtlSeconds() } as any;
+    await this.audit.log(user.id, 'INVITE_ACCEPTED', { userId: user.id, orgId: invite.orgId, role: invite.roleToCreate });
+    const resp: AuthResponseDto = {
+      user: userResp!,
+      accessToken,
+      refreshToken: compositeRefreshToken,
+      tokenType: 'Bearer',
+      expiresIn: this.getAccessTtlSeconds(),
+    };
+    return resp;
   }
 
   /**
@@ -324,7 +379,23 @@ export class AuthService {
     );
     const newTokenId = await this.saveRefreshToken(user.id, newRefreshTokenPlain, storedRefreshToken.id);
 
-    return { user, accessToken, refreshToken: `${newTokenId}.${newRefreshTokenPlain}`, tokenType: 'Bearer', expiresIn: this.getAccessTtlSeconds() } as any;
+    const resp: AuthResponseDto = {
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role,
+        userType: user.userType,
+        affiliationId: user.affiliationId,
+        emailVerified: user.emailVerified,
+      },
+      accessToken,
+      refreshToken: `${newTokenId}.${newRefreshTokenPlain}`,
+      tokenType: 'Bearer',
+      expiresIn: this.getAccessTtlSeconds(),
+    };
+    return resp;
   }
 
   /**
@@ -339,6 +410,7 @@ export class AuthService {
     const isTokenMatch = await verifyHash(tokenPlain, storedToken.tokenHash);
     if (!isTokenMatch) return;
     await this.prisma.refreshToken.update({ where: { id: storedToken.id }, data: { revoked: true } });
+    await this.audit.log(storedToken.userId, 'USER_LOGOUT');
   }
 
   /**

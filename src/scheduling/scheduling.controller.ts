@@ -14,7 +14,7 @@ import { Req } from '@nestjs/common';
 @ApiTags('Scheduling')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Controller('scheduling')
+@Controller({ path: 'scheduling', version: '1' })
 export class SchedulingController {
   constructor(private readonly schedulingService: SchedulingService) {}
 
@@ -80,4 +80,3 @@ export class SchedulingController {
     return this.schedulingService.checkConflicts(dto);
   }
 }
-

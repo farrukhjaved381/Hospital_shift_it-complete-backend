@@ -24,6 +24,9 @@ export class VerificationsRepository {
   async findVerificationById(id: string) {
     return this.prisma.verification.findUnique({ where: { id } });
   }
+  async findVerificationsByUser(userId: string) {
+    return this.prisma.verification.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
+  }
   async statsByMonth(yearMonth: string) {
     const [y, m] = yearMonth.split('-').map((v) => parseInt(v, 10));
     const start = new Date(Date.UTC(y, m - 1, 1));

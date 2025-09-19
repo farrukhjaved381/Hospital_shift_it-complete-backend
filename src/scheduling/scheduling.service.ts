@@ -60,7 +60,7 @@ export class SchedulingService {
         specialty: dto.specialty,
         startDate: start,
         endDate: end,
-        shift: dto.shift as any,
+        shift: dto.shift,
         hoursPerShift: dto.hoursPerShift,
         studentRoster: dto.studentRoster,
         status: 'PENDING',
@@ -93,11 +93,11 @@ export class SchedulingService {
         { endDate: { gt: new Date(query.from) } },
       ];
     }
-    return (this.prisma as any).rotationRequest.findMany({ where, orderBy: { createdAt: 'desc' } });
+    return this.prisma.rotationRequest.findMany({ where, orderBy: { createdAt: 'desc' } });
   }
 
   async approveRotationRequest(id: string, dto: ApproveRotationRequestDto, user: any) {
-    const req = await (this.prisma as any).rotationRequest.findUnique({ where: { id } });
+    const req = await this.prisma.rotationRequest.findUnique({ where: { id } });
     if (!req) throw new NotFoundException('Request not found');
     if (req.status !== 'PENDING') throw new BadRequestException('Request not pending');
     if (user.role !== Role.SUPER_ADMIN) {
@@ -132,6 +132,18 @@ export class SchedulingService {
         status: 'SCHEDULED',
       },
     });
+
+    // Create student assignments for approved rotation
+    if (Array.isArray(req.studentRoster) && req.studentRoster.length) {
+      const students = req.studentRoster.slice(0, rotation.capacity);
+      for (const studentId of students) {
+        try {
+          await this.prisma.assignment.create({ data: { rotationId: rotation.id, studentId } });
+        } catch (e) {
+          // Ignore duplicates or FK violations silently to avoid blocking approval
+        }
+      }
+    }
 
     const calEvent = await this.prisma.calendarEvent.create({
       data: {

@@ -31,7 +31,7 @@ import type { RequestWithUser } from '../auth/interfaces/request-with-user.inter
 
 @ApiTags('Organizations (SuperAdmin Only)')
 @ApiBearerAuth('JWT-auth')
-@Controller('organizations')
+@Controller({ path: 'organizations', version: '1' })
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Roles(Role.SUPER_ADMIN)
 export class OrganizationsController {

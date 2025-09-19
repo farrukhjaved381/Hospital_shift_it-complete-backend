@@ -15,7 +15,7 @@ import type { RequestWithUser } from '../auth/interfaces/request-with-user.inter
 @ApiTags('Verifications')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Controller('verifications')
+@Controller({ path: 'verifications', version: '1' })
 export class VerificationsController {
   constructor(private readonly svc: VerificationsService) {}
 
@@ -66,10 +66,15 @@ export class VerificationsController {
     return this.svc.stats(month);
   }
 
+  @ApiOperation({ summary: 'List verifications for a user' })
+  @Get(':userId')
+  async listVerifications(@Param('userId') userId: string, @Req() req: RequestWithUser) {
+    return this.svc.listVerifications(userId, req.user);
+  }
+
   @ApiOperation({ summary: 'Overdue verifications/documents' })
   @Get('overdue')
   async overdue(@Query('days') days = '14') {
     return this.svc.overdue(parseInt(days, 10) || 14);
   }
 }
-

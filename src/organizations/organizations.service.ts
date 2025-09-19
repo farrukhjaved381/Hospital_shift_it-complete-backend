@@ -134,7 +134,7 @@ export class OrganizationsService {
    * @returns The created admin user.
    */
   async createAdmin(createAdminDto: CreateUserDto): Promise<OrganizationResponseDto> { // Use CreateUserDto
-    const { email, password, firstName, lastName, affiliationId, role } = createAdminDto as any;
+    const { email, password, firstName, lastName, affiliationId, role } = createAdminDto;
 
     if (role !== Role.HOSPITAL_ADMIN && role !== Role.SCHOOL_ADMIN) {
       throw new BadRequestException('Only HOSPITAL_ADMIN or SCHOOL_ADMIN roles can be created directly.');
@@ -169,7 +169,7 @@ export class OrganizationsService {
     await this.prisma.membership.create({
       data: {
         userId: user.id,
-        organizationId: affiliationId,
+        organizationId: affiliationId!,
         role,
       },
     });

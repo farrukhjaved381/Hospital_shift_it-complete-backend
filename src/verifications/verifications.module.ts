@@ -6,9 +6,10 @@ import { PrismaModule } from '../prisma/prisma.module';
 import { S3Service } from './storage/s3.service';
 import { AuditService } from '../common/audit/audit.service';
 import { PartnerWebhookController } from './webhooks/partner-webhook.controller';
+import { BillingModule } from '../billing/billing.module';
 
 @Module({
-  imports: [PrismaModule],
+  imports: [PrismaModule, BillingModule],
   controllers: [VerificationsController, PartnerWebhookController],
   providers: [VerificationsService, VerificationsRepository, S3Service, AuditService],
 })

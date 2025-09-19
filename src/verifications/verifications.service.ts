@@ -5,13 +5,21 @@ import { ConfirmUploadDto } from './dto/confirm-upload.dto';
 import { ChangeDocumentStatusDto, DTOStatus as DocStatus } from './dto/change-document-status.dto';
 import { CreateVerificationDto } from './dto/create-verification.dto';
 import { ChangeVerificationStatusDto, DTOStatus as VerStatus } from './dto/change-verification-status.dto';
-import { Role } from '@prisma/client';
+import { ItemType, Role } from '@prisma/client';
 import { AuditService } from '../common/audit/audit.service';
 import { S3Service } from './storage/s3.service';
+import { InvoicesService } from '../billing/invoices.service';
+import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class VerificationsService {
-  constructor(private readonly repo: VerificationsRepository, private readonly s3: S3Service, private readonly audit: AuditService) {}
+  constructor(
+    private readonly repo: VerificationsRepository,
+    private readonly s3: S3Service,
+    private readonly audit: AuditService,
+    private readonly invoices: InvoicesService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   private assertSelfOrAdmin(user: any, targetUserId: string) {
     if (user.role === Role.SUPER_ADMIN) return;
@@ -77,8 +85,33 @@ export class VerificationsService {
     const data: any = { status: body.status };
     if (body.cost != null) data.cost = body.cost;
     const updatedVer = await this.repo.updateVerification(id, data);
+    // If approved, attach to invoice (one-per-verification simplified flow)
+    if (body.status === VerStatus.APPROVED) {
+      // Determine student's school: using user's affiliation if SCHOOL
+      // Fallback: require that user has affiliationId to a SCHOOL org
+      const v = await this.repo.findVerificationById(id);
+      const user = v ? await this.prisma.user.findUnique({ where: { id: v.userId } }) : null;
+      const schoolId = user?.affiliationId || null;
+      if (schoolId) {
+        const amount = body.cost != null ? body.cost : v?.cost || parseFloat(process.env.DEFAULT_VERIFICATION_PRICE || '55');
+        const inv = await this.invoices.attachItemForVerification({
+          schoolId,
+          description: `Verification ${v?.type || ''} for user ${v?.userId}`,
+          amount,
+          type: ItemType.VERIFICATION,
+          meta: { verificationId: id },
+        });
+        await this.repo.updateVerification(id, { invoiceId: inv.id });
+        await this.audit.log(user?.id || null, 'INVOICE_ITEM_ADDED', { verificationId: id, invoiceId: inv.id });
+      }
+    }
     await this.audit.log(user.id || null, 'VERIFICATION_STATUS_CHANGED', { verificationId: id, status: body.status, cost: body.cost });
     return updatedVer;
+  }
+
+  async listVerifications(userId: string, user: any) {
+    this.assertSelfOrAdmin(user, userId);
+    return this.repo.findVerificationsByUser(userId);
   }
 
   async stats(yearMonth: string) {
