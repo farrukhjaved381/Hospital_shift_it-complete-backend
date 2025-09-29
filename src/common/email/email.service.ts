@@ -20,6 +20,16 @@ export class EmailService {
           secure: port === 465,
           auth: { user, pass },
         });
+      } else if (process.env.SENDGRID_API_KEY) {
+        this.transporter = nodemailer.createTransport({
+          host: 'smtp.sendgrid.net',
+          port: 587,
+          secure: false,
+          auth: {
+            user: 'apikey',
+            pass: process.env.SENDGRID_API_KEY,
+          },
+        });
       }
     } catch (e) {
       this.transporter = null;
@@ -41,4 +51,3 @@ export class EmailService {
     return { ok: false, fallback: true };
   }
 }
-

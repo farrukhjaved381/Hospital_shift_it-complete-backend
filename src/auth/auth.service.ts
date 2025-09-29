@@ -98,9 +98,24 @@ export class AuthService {
       data: { userId: user.id, tokenHash: emailTokenHash, expiresAt: emailExpiresAt },
     });
     const composite = `${emailToken.id}.${emailTokenPlain}`;
-    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3000';
-    const link = `${appUrl}/verify-email?token=${encodeURIComponent(composite)}`;
-    await this.email.send(user.email, 'Verify your email', `Click to verify: ${link}`);
+    const appUrl = this.configService.get<string>('APP_URL') || 'http://localhost:3001';
+    const verifyPath = this.configService.get<string>('VERIFY_EMAIL_PATH') || '/api/v1/auth/verify-email';
+    let link: string;
+    try {
+      const base = new URL(appUrl.endsWith('/') ? appUrl : `${appUrl}/`);
+      const pathname = verifyPath.startsWith('/') ? verifyPath : `/${verifyPath}`;
+      const url = new URL(pathname, base);
+      url.searchParams.set('token', composite);
+      link = url.toString();
+    } catch (err) {
+      link = `${appUrl.replace(/\/$/, '')}${verifyPath.startsWith('/') ? verifyPath : `/${verifyPath}`}?token=${encodeURIComponent(composite)}`;
+    }
+    await this.email.send(
+      user.email,
+      'Verify your email',
+      `Click to verify: ${link}`,
+      `Click to verify: <a href="${link}">${link}</a>`,
+    );
 
     await this.audit.log(user.id, 'USER_REGISTERED', { email: user.email });
     const resp: AuthResponseDto = {
