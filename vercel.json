@@ -9,10 +9,6 @@
   "routes": [
     {
       "src": "/docs",
-      "dest": "/swagger.html"
-    },
-    {
-      "src": "/docs-json",
       "dest": "/src/main.ts"
     },
     {
