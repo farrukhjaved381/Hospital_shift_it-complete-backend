@@ -18,18 +18,5 @@ export function configureApp(app: INestApplication) {
     }),
   );
 
-  const builder = new DocumentBuilder()
-    .setTitle('Hospital Project API')
-    .setDescription('The API documentation for the Hospital Project')
-    .setVersion('1.0')
-    .addBearerAuth();
-
-  const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('docs', app, document, {
-    swaggerOptions: {
-      persistAuthorization: true,
-    },
-  });
-
   app.enableCors();
 }
